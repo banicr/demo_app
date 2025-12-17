@@ -1,5 +1,5 @@
 # Production-ready Dockerfile for Python Flask application
-FROM python:3.11-slim
+FROM python:3.14-slim
 
 LABEL org.opencontainers.image.source="https://github.com/banicr/demo_app"
 LABEL org.opencontainers.image.description="Demo Flask Application"
