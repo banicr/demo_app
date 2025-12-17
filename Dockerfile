@@ -10,9 +10,9 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     python3-dev && \
     rm -rf /var/lib/apt/lists/*
 
-# Install Python dependencies
+# Install Python dependencies to /usr/local (accessible to all users)
 COPY requirements.txt .
-RUN pip install --no-cache-dir --user -r requirements.txt
+RUN pip install --no-cache-dir -r requirements.txt
 
 # Stage 2: Runtime stage
 FROM python:3.11-slim
@@ -24,8 +24,7 @@ WORKDIR /app
 
 # Set environment variables
 ENV PYTHONDONTWRITEBYTECODE=1 \
-    PYTHONUNBUFFERED=1 \
-    PATH=/root/.local/bin:$PATH
+    PYTHONUNBUFFERED=1
 
 # APP_VERSION can be overridden at build time
 ARG APP_VERSION=v1.0.0
@@ -35,8 +34,9 @@ ENV APP_VERSION=${APP_VERSION}
 RUN apt-get update && apt-get install -y --no-install-recommends curl && \
     rm -rf /var/lib/apt/lists/*
 
-# Copy Python dependencies from builder
-COPY --from=builder /root/.local /root/.local
+# Copy Python dependencies from builder (they're in /usr/local)
+COPY --from=builder /usr/local/lib/python3.11/site-packages /usr/local/lib/python3.11/site-packages
+COPY --from=builder /usr/local/bin /usr/local/bin
 
 # Copy application code
 COPY app/ ./app/
