@@ -4,7 +4,9 @@ on:
   push:
     branches:
       - main
-      - develop
+  pull_request:
+    branches:
+      - main
   workflow_dispatch:
     inputs:
       skip_cache:
@@ -12,6 +14,10 @@ on:
         required: false
         default: false
         type: boolean
+
+concurrency:
+  group: gitops-update-${{ github.ref }}
+  cancel-in-progress: false
 
 env:
   DOCKER_IMAGE: ghcr.io/${{ github.repository_owner }}/demo-flask-app
@@ -26,9 +32,10 @@ jobs:
   lint:
     name: Code Linting
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     steps:
       - name: Checkout code
-        uses: actions/checkout@v4
+        uses: actions/checkout@b4ffde65f46336ab88eb53be808477a3936bae11  # v4.1.1
 
       - name: Set up Python
         uses: actions/setup-python@v5
@@ -50,8 +57,8 @@ jobs:
       - name: Run pylint on app code
         run: |
           echo "🔍 Running pylint on app code..."
-          pylint app/ --disable=C0111,R0903 --max-line-length=100 || true
-          echo "✅ Pylint completed!"
+          pylint app/ --disable=C0111,R0903 --max-line-length=100 --fail-under=8.0
+          echo "✅ Pylint passed!"
 
       - name: Lint summary
         run: |
@@ -64,13 +71,14 @@ jobs:
   test:
     name: Unit Tests
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     needs: lint
     steps:
       - name: Checkout code
-        uses: actions/checkout@v4
+        uses: actions/checkout@b4ffde65f46336ab88eb53be808477a3936bae11  # v4.1.1
 
       - name: Set up Python
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@0a5c61591373683505ea898e09a3ea4f39ef2b9c  # v5.0.0
         with:
           python-version: '3.11'
           cache: 'pip'
@@ -81,28 +89,36 @@ jobs:
           pip install -r requirements.txt
           pip install -r requirements-test.txt
 
-      - name: Run unit tests
+      - name: Run unit tests with coverage
         run: |
-          echo "🧪 Running unit tests..."
-          pytest tests/ -v --tb=short
+          echo "🧪 Running unit tests with coverage..."
+          pytest tests/ -v --tb=short --cov=app --cov-report=xml --cov-report=term --cov-fail-under=70
+
+      - name: Upload coverage to Codecov
+        uses: codecov/codecov-action@v3
+        if: always()
+        with:
+          files: coverage.xml
+          fail_ci_if_error: false
 
       - name: Test summary
         run: |
           echo "### ✅ Unit Tests Passed" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
-          echo "All unit tests completed successfully" >> $GITHUB_STEP_SUMMARY
+          echo "All unit tests completed successfully with coverage" >> $GITHUB_STEP_SUMMARY
 
   # Stage 3: Build and Push Docker Image
   build:
     name: Build and Push Docker Image
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     needs: [lint, test]
     outputs:
       image_tag: ${{ steps.meta.outputs.image_tag }}
       image_digest: ${{ steps.build.outputs.digest }}
     steps:
       - name: Checkout code
-        uses: actions/checkout@v4
+        uses: actions/checkout@b4ffde65f46336ab88eb53be808477a3936bae11  # v4.1.1
 
       - name: Set image metadata
         id: meta
@@ -113,10 +129,10 @@ jobs:
           echo "Building image with tag: ${IMAGE_TAG}"
 
       - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
+        uses: docker/setup-buildx-action@f95db51fddba0c2d1ec667646a06c2ce06100226  # v3.0.0
 
       - name: Login to GitHub Container Registry
-        uses: docker/login-action@v3
+        uses: docker/login-action@343f7c4344506bcbf9b4de18042ae17996df046d  # v3.0.0
         with:
           registry: ghcr.io
           username: ${{ github.actor }}
@@ -124,10 +140,10 @@ jobs:
 
       - name: Build and push Docker image
         id: build
-        uses: docker/build-push-action@v5
+        uses: docker/build-push-action@0565240e2d4ab88bba5387d719585280857ece09  # v5.0.0
         with:
           context: .
-          push: true
+          push: ${{ github.event_name != 'pull_request' }}
           platforms: linux/amd64,linux/arm64
           tags: |
             ${{ env.DOCKER_IMAGE }}:${{ steps.meta.outputs.image_tag }}
@@ -141,6 +157,22 @@ jobs:
             org.opencontainers.image.revision=${{ github.sha }}
             org.opencontainers.image.created=${{ github.event.head_commit.timestamp }}
 
+      - name: Run Trivy vulnerability scanner
+        uses: aquasecurity/trivy-action@master
+        with:
+          image-ref: ${{ env.DOCKER_IMAGE }}:${{ steps.meta.outputs.image_tag }}
+          format: 'sarif'
+          output: 'trivy-results.sarif'
+          exit-code: '1'
+          severity: 'CRITICAL,HIGH'
+          ignore-unfixed: true
+
+      - name: Upload Trivy scan results to GitHub Security
+        uses: github/codeql-action/upload-sarif@v3
+        if: always()
+        with:
+          sarif_file: 'trivy-results.sarif'
+
       - name: Image build summary
         run: |
           echo "### 🐳 Container Image Published" >> $GITHUB_STEP_SUMMARY
@@ -153,10 +185,22 @@ jobs:
   e2e-test:
     name: E2E Test on Kind Cluster
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     needs: build
     steps:
       - name: Checkout code
-        uses: actions/checkout@v4
+        uses: actions/checkout@b4ffde65f46336ab88eb53be808477a3936bae11  # v4.1.1
+
+      - name: Checkout GitOps repository
+        uses: actions/checkout@b4ffde65f46336ab88eb53be808477a3936bae11  # v4.1.1
+        with:
+          repository: ${{ github.repository_owner }}/${{ env.GITOPS_REPO }}
+          path: gitops-repo
+
+      - name: Install Helm
+        uses: azure/setup-helm@5119fcb9089d432beecbf79bb2c7915207344b78  # v4.0.0
+        with:
+          version: 'latest'
 
       - name: Install kind
         run: |
@@ -193,78 +237,30 @@ jobs:
           echo "📁 Creating demo-app namespace..."
           kubectl create namespace demo-app
 
-      - name: Deploy application
+      - name: Deploy application with Helm
         run: |
-          echo "🚀 Deploying application..."
+          echo "🚀 Deploying application with Helm chart..."
+          helm upgrade --install demo-flask-app ./gitops-repo/helm/demo-flask-app \
+            --namespace demo-app \
+            --set image.tag=${{ needs.build.outputs.image_tag }} \
+            --set image.pullPolicy=Never \
+            --set replicaCount=1 \
+            --wait --timeout 2m
           
-          cat <<EOF | kubectl apply -f -
-          apiVersion: apps/v1
-          kind: Deployment
-          metadata:
-            name: demo-flask-app
-            namespace: demo-app
-          spec:
-            replicas: 1
-            selector:
-              matchLabels:
-                app: demo-flask-app
-            template:
-              metadata:
-                labels:
-                  app: demo-flask-app
-              spec:
-                containers:
-                - name: flask-app
-                  image: ${{ env.DOCKER_IMAGE }}:${{ needs.build.outputs.image_tag }}
-                  imagePullPolicy: Never
-                  ports:
-                  - containerPort: 5000
-                  env:
-                  - name: APP_VERSION
-                    value: "${{ needs.build.outputs.image_tag }}"
-                  - name: APP_NAME
-                    value: "Demo Flask App"
-                  livenessProbe:
-                    httpGet:
-                      path: /healthz
-                      port: 5000
-                    initialDelaySeconds: 10
-                    periodSeconds: 10
-                  readinessProbe:
-                    httpGet:
-                      path: /healthz
-                      port: 5000
-                    initialDelaySeconds: 5
-                    periodSeconds: 5
-          ---
-          apiVersion: v1
-          kind: Service
-          metadata:
-            name: demo-flask-app
-            namespace: demo-app
-          spec:
-            type: ClusterIP
-            ports:
-            - port: 80
-              targetPort: 5000
-            selector:
-              app: demo-flask-app
-          EOF
-          
-          echo "✅ Application deployed"
+          echo "✅ Application deployed with Helm"
 
       - name: Wait for deployment
         run: |
-          echo "⏳ Waiting for deployment to be ready..."
+          echo "⏳ Verifying deployment readiness..."
           kubectl wait --for=condition=available --timeout=120s \
             deployment/demo-flask-app -n demo-app
           
           echo "📊 Deployment status:"
           kubectl get all -n demo-app
 
-      - name: Test health endpoint
+      - name: Test health endpoints
         run: |
-          echo "🧪 Testing health endpoint..."
+          echo "🧪 Testing health endpoints..."
           
           # Create a curl pod for testing
           kubectl run test-curl --image=curlimages/curl:latest -n demo-app --restart=Never -- sleep 3600
@@ -272,21 +268,38 @@ jobs:
           # Wait for pod to be ready
           kubectl wait --for=condition=ready --timeout=60s pod/test-curl -n demo-app
           
-          # Execute curl command
-          RESPONSE=$(kubectl exec -n demo-app test-curl -- curl -s http://demo-flask-app/healthz)
-          
-          echo "Health check response: $RESPONSE"
-          
-          # Validate response
-          if echo "$RESPONSE" | grep -q '"status".*:.*"ok"'; then
-            echo "✅ Health check passed!"
-          else
-            echo "❌ Health check failed!"
-            echo "Expected: {\"status\":\"ok\"}"
-            echo "Got: $RESPONSE"
+          # Test liveness endpoint
+          echo "Testing liveness probe..."
+          LIVENESS=$(kubectl exec -n demo-app test-curl -- curl -s http://demo-flask-app/healthz/live)
+          echo "Liveness response: $LIVENESS"
+          if ! echo "$LIVENESS" | grep -q '"status".*:.*"ok"'; then
+            echo "❌ Liveness check failed!"
             kubectl delete pod test-curl -n demo-app --ignore-not-found
             exit 1
           fi
+          echo "✅ Liveness check passed!"
+          
+          # Test readiness endpoint
+          echo "Testing readiness probe..."
+          READINESS=$(kubectl exec -n demo-app test-curl -- curl -s http://demo-flask-app/healthz/ready)
+          echo "Readiness response: $READINESS"
+          if ! echo "$READINESS" | grep -q '"status".*:.*"ready"'; then
+            echo "❌ Readiness check failed!"
+            kubectl delete pod test-curl -n demo-app --ignore-not-found
+            exit 1
+          fi
+          echo "✅ Readiness check passed!"
+          
+          # Test legacy health endpoint
+          echo "Testing legacy health endpoint..."
+          HEALTH=$(kubectl exec -n demo-app test-curl -- curl -s http://demo-flask-app/healthz)
+          echo "Health response: $HEALTH"
+          if ! echo "$HEALTH" | grep -q '"status".*:.*"ready"'; then
+            echo "❌ Legacy health check failed!"
+            kubectl delete pod test-curl -n demo-app --ignore-not-found
+            exit 1
+          fi
+          echo "✅ Legacy health check passed!"
           
           # Cleanup
           kubectl delete pod test-curl -n demo-app --ignore-not-found
@@ -339,6 +352,7 @@ jobs:
     name: Update GitOps Manifests
     needs: [build, e2e-test]
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     if: github.ref == 'refs/heads/main'
     steps:
       - name: Check for GITOPS_PAT secret
@@ -352,16 +366,22 @@ jobs:
           echo "✅ GITOPS_PAT secret is configured"
 
       - name: Checkout gitops repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@b4ffde65f46336ab88eb53be808477a3936bae11  # v4.1.1
         with:
           repository: ${{ github.repository_owner }}/${{ env.GITOPS_REPO }}
           token: ${{ secrets.GITOPS_PAT }}
           path: gitops-repo
 
       - name: Install Helm
-        uses: azure/setup-helm@v4
+        uses: azure/setup-helm@5119fcb9089d432beecbf79bb2c7915207344b78  # v4.0.0
         with:
           version: 'latest'
+
+      - name: Install yq
+        run: |
+          wget https://github.com/mikefarah/yq/releases/latest/download/yq_linux_amd64 -O /usr/local/bin/yq
+          chmod +x /usr/local/bin/yq
+          yq --version
 
       - name: Update Helm values with new image tag
         run: |
@@ -369,11 +389,9 @@ jobs:
           
           echo "📝 Updating Helm values with image tag: ${{ needs.build.outputs.image_tag }}"
           
-          # Update values.yaml with new image tag
-          sed -i "s|tag:.*|tag: \"${{ needs.build.outputs.image_tag }}\"|g" values.yaml
-          
-          # Update APP_VERSION in values.yaml
-          sed -i "s|appVersion:.*|appVersion: \"${{ needs.build.outputs.image_tag }}\"|g" values.yaml
+          # Use yq for precise YAML manipulation
+          yq -i '.image.tag = "${{ needs.build.outputs.image_tag }}"' values.yaml
+          yq -i '.env.appVersion = "${{ needs.build.outputs.image_tag }}"' values.yaml
           
           echo "✅ Updated Helm values:"
           cat values.yaml | grep -A 3 "image:"
@@ -416,6 +434,8 @@ jobs:
           - Validation: ✅ Helm lint passed"
             
             echo "📤 Pushing to main branch..."
+            # Pull latest changes before pushing to avoid conflicts
+            git pull --rebase origin main
             git push origin main
             
             echo "✅ Successfully pushed to GitOps repository"
@@ -429,3 +449,72 @@ jobs:
             echo "" >> $GITHUB_STEP_SUMMARY
             echo "ArgoCD will automatically sync this change within 3 minutes" >> $GITHUB_STEP_SUMMARY
           fi
+
+  # Stage 6: Verify Deployment (Optional - requires production access)
+  verify-deployment:
+    name: Verify Production Deployment
+    needs: [build, update-gitops]
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    if: github.ref == 'refs/heads/main' && vars.ENABLE_DEPLOYMENT_VERIFICATION == 'true'
+    steps:
+      - name: Checkout gitops repository
+        uses: actions/checkout@b4ffde65f46336ab88eb53be808477a3936bae11  # v4.1.1
+        with:
+          repository: ${{ github.repository_owner }}/${{ env.GITOPS_REPO }}
+          token: ${{ secrets.GITOPS_PAT }}
+          path: gitops-repo
+
+      - name: Wait for ArgoCD sync
+        run: |
+          echo "⏳ Waiting for ArgoCD to sync the changes..."
+          echo "This typically takes 1-3 minutes"
+          sleep 180
+
+      - name: Setup kubectl (if production access available)
+        run: |
+          echo "This step requires production cluster access"
+          echo "Configure KUBECONFIG secret to enable deployment verification"
+
+      - name: Verify deployment health
+        id: verify
+        continue-on-error: true
+        run: |
+          echo "🔍 Verifying deployment health..."
+          # This requires production cluster access via KUBECONFIG
+          # Uncomment when production access is configured:
+          # HEALTHY=$(kubectl get pods -n demo-app -l app.kubernetes.io/name=demo-flask-app \
+          #   -o jsonpath='{.items[*].status.phase}' | grep -c Running || echo "0")
+          # if [ "$HEALTHY" -lt 1 ]; then
+          #   echo "deployment_healthy=false" >> $GITHUB_OUTPUT
+          #   exit 1
+          # fi
+          # echo "deployment_healthy=true" >> $GITHUB_OUTPUT
+          echo "✅ Deployment verification skipped (production access not configured)"
+          echo "deployment_healthy=unknown" >> $GITHUB_OUTPUT
+
+      - name: Rollback on failure
+        if: steps.verify.outputs.deployment_healthy == 'false'
+        run: |
+          echo "❌ Deployment health check failed - initiating rollback"
+          cd gitops-repo
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          
+          # Revert the last commit
+          git revert HEAD --no-edit
+          git push origin main
+          
+          echo "🔄 Rollback complete - previous version restored"
+          echo "### ⚠️ Deployment Rolled Back" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "**Reason:** Deployment health check failed" >> $GITHUB_STEP_SUMMARY
+          echo "**Action:** Reverted to previous version" >> $GITHUB_STEP_SUMMARY
+          exit 1
+
+      - name: Deployment verification summary
+        if: steps.verify.outputs.deployment_healthy == 'true'
+        run: |
+          echo "### ✅ Deployment Verified" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "Production deployment is healthy and serving traffic" >> $GITHUB_STEP_SUMMARY

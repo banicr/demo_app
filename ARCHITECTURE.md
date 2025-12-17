@@ -20,10 +20,11 @@ Simple overview of how code gets from your laptop to Kubernetes.
 ┌─────────────────────────────────────────────────────────────────┐
 │                   GitHub Actions Pipeline                       │
 ├─────────────────────────────────────────────────────────────────┤
-│  1. Test        → Run pytest unit tests                        │
-│  2. Build       → Build Docker image                           │
-│  3. E2E Test    → Test in temporary kind cluster               │
-│  4. Update      → Update demo_gitops repo                      │
+│  1. Lint        → flake8 + pylint (--fail-under=8.0)          │
+│  2. Test        → pytest with 70% coverage                     │
+│  3. Build       → Docker + Trivy scan                          │
+│  4. E2E Test    → Deploy with Helm in kind cluster            │
+│  5. Update      → Update demo_gitops                   │
 └──────────────────────────┬──────────────────────────────────────┘
                            │ pushes image
                            ▼
@@ -70,55 +71,76 @@ Simple overview of how code gets from your laptop to Kubernetes.
        │
        ▼
 ┌─────────────────────────────────────────────────────────────────┐
-│                    Stage 1: Test                                │
+│                    Stage 1: Lint                                │
 ├─────────────────────────────────────────────────────────────────┤
-│  • Run pytest unit tests                                        │
-│  • Test /healthz endpoint                                       │
-│  • Test / main page                                             │
-│  • Validate HTTP responses                                      │
+│  • Run flake8 (style checks)                                    │
+│  • Run pylint --fail-under=8.0 (quality checks)                │
+│  • Timeout: 10 minutes                                          │
 │  ❌ If fails → Stop pipeline                                    │
 │  ✅ If passes → Continue                                        │
 └──────┬──────────────────────────────────────────────────────────┘
        │
        ▼
 ┌─────────────────────────────────────────────────────────────────┐
-│                   Stage 2: Build                                │
+│                    Stage 2: Test                                │
 ├─────────────────────────────────────────────────────────────────┤
-│  • Generate tag: v2.0.0-{sha}-{run}                            │
-│  • Build Docker image                                           │
-│  • Push to ghcr.io/banicr/demo-flask-app:{tag}                │
-│  • Tag as latest                                                │
-│  • Pass tag to next stage                                       │
+│  • Run pytest with coverage (--cov-fail-under=70)               │
+│  • Upload coverage to Codecov                                   │
+│  • Test all endpoints (/healthz/live, /healthz/ready)          │
+│  • Timeout: 10 minutes                                          │
+│  ❌ If fails → Stop pipeline                                    │
+│  ✅ If passes → Continue                                        │
 └──────┬──────────────────────────────────────────────────────────┘
        │
        ▼
 ┌─────────────────────────────────────────────────────────────────┐
-│                  Stage 3: E2E Test                              │
+│                   Stage 3: Build                                │
 ├─────────────────────────────────────────────────────────────────┤
+│  • Generate tag: {sha}-{run} (e.g., a1b2c3d-42)                │
+│  • Build Docker image (multi-platform: amd64, arm64)            │
+│  • Push to ghcr.io/banicr/demo-flask-app:{tag}                │
+│  • Run Trivy vulnerability scan (CRITICAL, HIGH)                │
+│  • Upload SARIF to GitHub Security                              │
+│  • Tag as latest                                                │
+│  • Timeout: 20 minutes                                          │
+│  ❌ If vulnerabilities → Stop pipeline                          │
+│  ✅ If clean → Continue                                         │
+└──────┬──────────────────────────────────────────────────────────┘
+       │
+       ▼
+┌─────────────────────────────────────────────────────────────────┐
+│                  Stage 4: E2E Test                              │
+├─────────────────────────────────────────────────────────────────┤
+│  • Clone demo_gitops repo (to get Helm chart)                   │
 │  • Create temporary kind cluster                                │
 │  • Load Docker image into cluster                               │
-│  • Deploy app with manifests                                    │
+│  • Deploy with Helm chart                  │
 │  • Wait for pods to be ready                                    │
-│  • Test /healthz endpoint                                       │
-│  • Verify app works                                             │
-│  • Delete cluster                                               │
+│  • Test /healthz/live endpoint                                  │
+│  • Test /healthz/ready endpoint (with health checks)            │
+│  • Test / root endpoint                                         │
+│  • Delete cluster (cleanup)                                     │
+│  • Timeout: 30 minutes                                          │
 │  ❌ If fails → Stop pipeline                                    │
 │  ✅ If passes → Continue                                        │
 └──────┬──────────────────────────────────────────────────────────┘
        │
        ▼
 ┌─────────────────────────────────────────────────────────────────┐
-│               Stage 4: Update GitOps                            │
+│               Stage 5: Update GitOps                            │
 ├─────────────────────────────────────────────────────────────────┤
-│  • Clone demo_gitops repo                                       │
-│  • Update helm/demo-flask-app/values.yaml:                     │
-│    - image.tag: new version                                     │
-│    - env.appVersion: new version                                │
-│  • Run Helm lint --strict (pre-validation)                      │
+│  • Clone demo_gitops repo (with GITOPS_PAT)                     │
+│  • Install yq (YAML processor)                                  │
+│  • Update helm/demo-flask-app/values.yaml              │
+│    - .image.tag = new version                                   │
+│    - .env.appVersion = new version                              │
+│  • Run Helm lint --strict (validation)                          │
 │  • Render and validate Helm templates                           │
-│  • If validation passes → Push directly to main                 │
-│  • If validation fails → Pipeline fails (no push)               │
-│  • ArgoCD detects change and deploys (~10-20 sec)               │
+│  • git pull --rebase (prevent race conditions)                  │
+│  • Commit with metadata (image, SHA, pipeline URL)              │
+│  • Push to main                                                 │
+│  • Timeout: 10 minutes                                          │
+│  • Only runs on: push to main (not PRs)                         │
 └─────────────────────────────────────────────────────────────────┘
 ```
 

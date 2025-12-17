@@ -60,18 +60,9 @@ kubectl port-forward -n argocd svc/argocd-server 8081:443
 ```
 Open: https://localhost:8081
 - Username: `admin`
-- Password: Run `cat argocd-credentials.txt` in the scripts folderdd app/main.py
-git commit -m "Bump version"
-git push origin main
-```
+- Password: Run `cat argocd-credentials.txt` in the scripts folder
 
-**What Happens**:
-1. GitHub Actions runs (5 min) → builds image → updates demo_gitops
-2. ArgoCD detects change (within 3 min) → deploys new version
-3. Refresh http://localhost:8080 to see new version
-
-**Monitor**:
-- PHow It Works
+## How It Works
 
 **Make a code change:**
 ```bash
@@ -81,16 +72,17 @@ git add . && git commit -m "Update app" && git push
 ```
 
 **What happens automatically:**
-1. GitHub Actions builds Docker image (~3 min)
-2. Pipeline validates & updates demo_gitops repo
-3. ArgoCD deploys to Kubernetes (~1 min)
-4. Refresh http://localhost:8080 to see changes
+1. **Lint** (flake8, pylint) + **Test** (pytest with 70% coverage)
+2. **Build** (Docker image with Trivy scan for vulnerabilities)
+3. **E2E Test** (Deploy to temporary kind cluster with Helm)
+4. **Update GitOps** (Update demo_gitops values.yaml with yq)
+5. ArgoCD detects change and deploys (~1-3 min)
+6. Refresh http://localhost:8080 to see changes
 
 **Monitor progress:**
 - Pipeline: https://github.com/banicr/demo_app/actions
 - ArgoCD: https://localhost:8081
-- Pods: `kubectl get pods -n demo-appflask-app -n demo-app
-```
+- Pods: `kubectl get pods -n demo-app`
 
 ## Troubleshooting
 

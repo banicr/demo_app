@@ -27,23 +27,25 @@ kubectl port-forward -n demo-app svc/demo-flask-app 8080:80
 
 **Endpoints:**
 - `/` - Main page
-- `/healthz` - Health check
+- `/healthz` - Legacy health check (→ readiness)
+- `/healthz/live` - Liveness probe (process check)
+- `/healthz/ready` - Readiness probe (full health check)
 
 ## CI/CD Pipeline
 
 Image tag: `{short-sha}-{run-number}` (e.g., `a1b2c3d-42`)
 
-**Stage 1: Lint** - flake8 + pylint  
-**Stage 2: Test** - pytest unit tests  
-**SPipeline Stages
+**Pipeline Stages:**
 
-1. **Lint** - Code quality checks
-2. **Test** - Run unit tests
-3. **Build** - Create Docker image `ghcr.io/banicr/demo-flask-app:{sha}-{run}`
-4. **E2E Test** - Deploy & test in temporary cluster
-5. **Update GitOps** - Validate Helm & push to `demo_gitops`
+1. **Lint** - flake8 + pylint (fails on errors, --fail-under=8.0)
+2. **Test** - pytest with coverage (70% threshold, uploads to Codecov)
+3. **Build** - Docker image + Trivy vulnerability scan
+4. **E2E Test** - Deploy with Helm chart in kind cluster
+5. **Update GitOps** - Update demo_gitops with yq (only on main)
 
-Fast: ~3 minutes. Safe: Validates before deploy.
+**Security:** Actions pinned to SHA, Trivy scanning, concurrency control
+**Speed:** ~5 minutes total
+**PR Support:** Runs on PRs without pushing images
 - Select "Read and write permissions"
 - Save
 

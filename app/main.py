@@ -2,6 +2,7 @@
 Flask application with health check and version display.
 """
 import os
+import psutil
 from flask import Flask, jsonify, render_template_string
 
 app = Flask(__name__)
@@ -13,8 +14,74 @@ APP_NAME = os.environ.get('APP_NAME', 'Demo Flask App')
 
 @app.route('/healthz')
 def healthz():
-    """Health check endpoint for Kubernetes probes."""
-    return jsonify({'status': 'ok'}), 200
+    """
+    Legacy health check endpoint for backward compatibility.
+    Redirects to readiness check.
+    """
+    return readiness()
+
+
+@app.route('/healthz/live')
+def liveness():
+    """
+    Liveness probe endpoint - checks if the process is alive.
+    Returns 200 if the Flask process is running.
+    Kubernetes will restart the pod if this fails.
+    """
+    return jsonify({'status': 'ok', 'check': 'liveness'}), 200
+
+
+@app.route('/healthz/ready')
+def readiness():
+    """
+    Readiness probe endpoint - checks if the app can serve traffic.
+    Performs comprehensive health checks including memory usage.
+    Kubernetes will remove pod from service if this fails.
+    """
+    checks = {}
+    status_code = 200
+    
+    # Check memory usage
+    try:
+        memory = psutil.virtual_memory()
+        memory_percent = memory.percent
+        
+        if memory_percent > 90:
+            checks['memory'] = f'critical: {memory_percent:.1f}%'
+            status_code = 503
+        elif memory_percent > 80:
+            checks['memory'] = f'warning: {memory_percent:.1f}%'
+        else:
+            checks['memory'] = f'ok: {memory_percent:.1f}%'
+    except Exception as e:
+        checks['memory'] = f'error: {str(e)}'
+        status_code = 503
+    
+    # Check disk usage
+    try:
+        disk = psutil.disk_usage('/')
+        disk_percent = disk.percent
+        
+        if disk_percent > 90:
+            checks['disk'] = f'critical: {disk_percent:.1f}%'
+            status_code = 503
+        elif disk_percent > 80:
+            checks['disk'] = f'warning: {disk_percent:.1f}%'
+        else:
+            checks['disk'] = f'ok: {disk_percent:.1f}%'
+    except Exception as e:
+        checks['disk'] = f'error: {str(e)}'
+        # Don't fail on disk check errors in containers
+    
+    # Check if Flask app is responding
+    checks['flask'] = 'ok'
+    
+    overall_status = 'ready' if status_code == 200 else 'not ready'
+    
+    return jsonify({
+        'status': overall_status,
+        'checks': checks
+    }), status_code
 
 
 @app.route('/')
@@ -77,7 +144,18 @@ def index():
     )
 
 
+@app.errorhandler(404)
+def not_found(e):
+    """Handle 404 errors."""
+    return jsonify({'error': 'Not found', 'status': 404}), 404
+
+
+@app.errorhandler(500)
+def internal_error(e):
+    """Handle 500 errors."""
+    return jsonify({'error': 'Internal server error', 'status': 500}), 500
+
+
 if __name__ == '__main__':
     # For local development only
     app.run(host='0.0.0.0', port=5000, debug=True)
-# GitOps works
