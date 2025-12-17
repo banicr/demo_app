@@ -26,6 +26,7 @@ env:
 permissions:
   contents: read
   packages: write
+  security-events: write
 
 jobs:
   # Stage 1: Linting and Code Quality
@@ -169,7 +170,7 @@ jobs:
           ignore-unfixed: true
 
       - name: Upload Trivy scan results to GitHub Security
-        uses: github/codeql-action/upload-sarif@v3
+        uses: github/codeql-action/upload-sarif@v4
         if: always()
         with:
           sarif_file: 'trivy-results.sarif'
