@@ -49,7 +49,7 @@ def readiness():
         memory = psutil.virtual_memory()
         memory_percent = memory.percent
         checks['memory'] = f'{memory_percent:.1f}%'
-    except Exception:
+    except (OSError, AttributeError):
         checks['memory'] = 'unavailable'
 
     overall_status = 'ready'
@@ -121,13 +121,13 @@ def index():
 
 
 @app.errorhandler(404)
-def not_found(e):
+def not_found(_e):
     """Handle 404 errors."""
     return jsonify({'error': 'Not found', 'status': 404}), 404
 
 
 @app.errorhandler(500)
-def internal_error(e):
+def internal_error(_e):
     """Handle 500 errors."""
     return jsonify({'error': 'Internal server error', 'status': 500}), 500
 
