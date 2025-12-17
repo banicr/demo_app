@@ -169,7 +169,7 @@ Include comments explaining each section.
 In demo_app/scripts/, create setup-local-cluster.sh bash script that:
 
 1. Checks if kind is installed
-2. Creates kind cluster named "dev-gitops-cluster" if not exists
+2. Creates kind cluster named "gitops-demo" if not exists
 3. Installs ArgoCD in argocd namespace using official manifests
 4. Waits for ArgoCD server to be ready
 5. Gets ArgoCD initial admin password
@@ -427,7 +427,7 @@ Follow this checklist to recreate the entire project from scratch:
 
 ### Phase 5: Local Setup
 - [ ] Create demo_app/scripts/setup-local-cluster.sh
-- [ ] Script creates kind cluster: dev-gitops-cluster
+- [ ] Script creates kind cluster: gitops-demo
 - [ ] Script installs ArgoCD in argocd namespace
 - [ ] Script waits for ArgoCD to be ready
 - [ ] Script creates demo-app namespace

@@ -25,7 +25,7 @@ NC='\033[0m' # No Color
 CLUSTER_NAME="${1:-gitops-demo}"
 ARGOCD_VERSION="stable"
 GITOPS_REPO="https://github.com/banicr/demo_gitops.git"
-APP_MANIFEST_PATH="../gitops-repo/argocd-application.yaml"
+APP_MANIFEST_PATH="../../demo_gitops/argocd-application.yaml"
 
 ################################################################################
 # Helper Functions
@@ -231,18 +231,18 @@ deploy_application() {
     # Check if running from demo_app/scripts
     local manifest_path="$APP_MANIFEST_PATH"
     if [[ ! -f "$manifest_path" ]]; then
-        # Try alternative paths
-        if [[ -f "../../gitops-repo/argocd-application.yaml" ]]; then
-            manifest_path="../../gitops-repo/argocd-application.yaml"
-        elif [[ -f "../demo_gitops/argocd-application.yaml" ]]; then
-            manifest_path="../demo_gitops/argocd-application.yaml"
-        else
-            print_warning "ArgoCD Application manifest not found at expected location"
-            print_info "Please ensure gitops-repo is cloned at: $(dirname "$APP_MANIFEST_PATH")"
-            print_info "You can manually apply it later with:"
-            echo "  kubectl apply -f /path/to/gitops-repo/argocd-application.yaml"
-            return 1
-        fi
+        print_warning "ArgoCD Application manifest not found at: $manifest_path"
+        print_info "Expected location: demo_gitops/argocd-application.yaml"
+        print_info "Current directory: $(pwd)"
+        print_info ""
+        print_info "Please ensure both repositories are cloned in the same parent directory:"
+        print_info "  parent/"
+        print_info "    ├── demo_app/"
+        print_info "    └── demo_gitops/"
+        print_info ""
+        print_info "You can manually apply it later with:"
+        echo "  kubectl apply -f /path/to/demo_gitops/argocd-application.yaml"
+        return 1
     fi
     
     print_info "Applying ArgoCD Application manifest..."

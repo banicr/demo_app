@@ -140,7 +140,7 @@ kubectl port-forward -n demo-app svc/demo-flask-app 8080:80  # Port forward
 
 **Cluster issues?**
 ```bash
-kind delete cluster --name dev-gitops-cluster
+kind delete cluster --name gitops-demo
 cd demo_app/scripts && ./setup-local-cluster.sh
 ```
 
@@ -148,11 +148,11 @@ cd demo_app/scripts && ./setup-local-cluster.sh
 
 ```bash
 # Delete everything
-kind delete cluster --name dev-gitops-cluster
+kind delete cluster --name gitops-demo
 cd demo_app && rm -rf venv
 
 # Or start fresh
-kind delete cluster --name dev-gitops-cluster
+kind delete cluster --name gitops-demo
 cd demo_app/scripts && ./setup-local-cluster.sh
 ```
 
