@@ -40,12 +40,12 @@ def readiness():
     """
     checks = {}
     status_code = 200
-    
+
     # Check memory usage
     try:
         memory = psutil.virtual_memory()
         memory_percent = memory.percent
-        
+
         if memory_percent > 90:
             checks['memory'] = f'critical: {memory_percent:.1f}%'
             status_code = 503
@@ -56,12 +56,12 @@ def readiness():
     except Exception as e:
         checks['memory'] = f'error: {str(e)}'
         status_code = 503
-    
+
     # Check disk usage
     try:
         disk = psutil.disk_usage('/')
         disk_percent = disk.percent
-        
+
         if disk_percent > 90:
             checks['disk'] = f'critical: {disk_percent:.1f}%'
             status_code = 503
@@ -72,10 +72,10 @@ def readiness():
     except Exception as e:
         checks['disk'] = f'error: {str(e)}'
         # Don't fail on disk check errors in containers
-    
+
     # Check if Flask app is responding
     checks['flask'] = 'ok'
-    
+
     overall_status = 'ready' if status_code == 200 else 'not ready'
     
     return jsonify({
