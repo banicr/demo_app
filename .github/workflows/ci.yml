@@ -249,7 +249,18 @@ jobs:
             --set replicaCount=1 \
             --set readinessProbe.initialDelaySeconds=15 \
             --set livenessProbe.initialDelaySeconds=20 \
-            --wait --timeout 5m
+            --set securityContext.readOnlyRootFilesystem=false \
+            --debug \
+            --wait --timeout 5m || {
+              echo "❌ Helm deployment failed"
+              echo "📊 Checking pod status..."
+              kubectl get pods -n demo-app -o wide
+              echo "📜 Pod logs:"
+              kubectl logs -n demo-app -l app.kubernetes.io/name=demo-flask-app --tail=100 || true
+              echo "📋 Pod describe:"
+              kubectl describe pods -n demo-app -l app.kubernetes.io/name=demo-flask-app || true
+              exit 1
+            }
           
           echo "✅ Application deployed with Helm"
 
