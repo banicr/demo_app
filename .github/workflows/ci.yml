@@ -383,30 +383,77 @@ jobs:
           echo ""
           echo "ℹ️  Helm validation will run automatically in gitops-repo pipeline"
 
-      - name: Commit and push changes
+      - name: Create branch and commit changes
+        id: create_branch
         run: |
           cd gitops-repo
           
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
           
+          # Create unique branch name
+          BRANCH_NAME="update-image-${{ needs.build.outputs.image_tag }}"
+          echo "branch_name=${BRANCH_NAME}" >> $GITHUB_OUTPUT
+          
+          git checkout -b "${BRANCH_NAME}"
           git add helm/demo-flask-app/values.yaml
           
           if git diff --staged --quiet; then
+            echo "no_changes=true" >> $GITHUB_OUTPUT
             echo "No changes to commit"
           else
+            echo "no_changes=false" >> $GITHUB_OUTPUT
+            
             git commit -m "chore: Update image to ${{ needs.build.outputs.image_tag }}
 
-          Updated by CI/CD pipeline from app-repo
-          Commit: ${{ github.sha }}
-          Run: ${{ github.run_number }}"
+          Updated by CI/CD pipeline from demo_app
+          - Image: ghcr.io/${{ github.repository_owner }}/demo-flask-app:${{ needs.build.outputs.image_tag }}
+          - Source commit: ${{ github.sha }}
+          - Pipeline run: ${{ github.run_number }}"
             
-            git push
-            
-            echo "### 🚀 GitOps Update Complete" >> $GITHUB_STEP_SUMMARY
-            echo "" >> $GITHUB_STEP_SUMMARY
-            echo "**Image Tag:** \`${{ needs.build.outputs.image_tag }}\`" >> $GITHUB_STEP_SUMMARY
-            echo "**Repository:** \`${{ env.GITOPS_REPO }}\`" >> $GITHUB_STEP_SUMMARY
-            echo "" >> $GITHUB_STEP_SUMMARY
-            echo "ArgoCD will automatically detect and sync this change" >> $GITHUB_STEP_SUMMARY
+            git push origin "${BRANCH_NAME}"
+            echo "✅ Pushed branch: ${BRANCH_NAME}"
           fi
+
+      - name: Create Pull Request
+        if: steps.create_branch.outputs.no_changes == 'false'
+        env:
+          GH_TOKEN: ${{ secrets.GITOPS_PAT }}
+        run: |
+          cd gitops-repo
+          
+          # Create PR
+          PR_URL=$(gh pr create \
+            --title "chore: Update image to ${{ needs.build.outputs.image_tag }}" \
+            --body "## Automated Image Update
+
+          **Image Tag:** \`${{ needs.build.outputs.image_tag }}\`
+          **Source Repo:** \`${{ github.repository }}\`
+          **Source Commit:** \`${{ github.sha }}\`
+          **Pipeline Run:** [#${{ github.run_number }}](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }})
+
+          ### Changes
+          - Updated \`helm/demo-flask-app/values.yaml\` with new image tag
+
+          ### Validation
+          - ✅ E2E tests passed in app repository
+          - ⏳ Helm validation will run automatically
+          
+          This PR will be **auto-merged** once validation passes." \
+            --base main \
+            --head "${{ steps.create_branch.outputs.branch_name }}")
+          
+          echo "pr_url=${PR_URL}" >> $GITHUB_OUTPUT
+          echo "✅ Created PR: ${PR_URL}"
+          
+          # Enable auto-merge (will merge when validation passes)
+          gh pr merge "${PR_URL}" --auto --squash
+          echo "✅ Enabled auto-merge for PR"
+          
+          echo "### 🚀 GitOps Update PR Created" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "**Image Tag:** \`${{ needs.build.outputs.image_tag }}\`" >> $GITHUB_STEP_SUMMARY
+          echo "**Pull Request:** ${PR_URL}" >> $GITHUB_STEP_SUMMARY
+          echo "**Status:** Auto-merge enabled (will merge after validation)" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "Once validation passes and PR merges, ArgoCD will automatically sync" >> $GITHUB_STEP_SUMMARY
