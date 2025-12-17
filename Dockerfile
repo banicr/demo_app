@@ -1,6 +1,9 @@
 # Production-ready Dockerfile for Python Flask application
 FROM python:3.11-slim
 
+LABEL org.opencontainers.image.source="https://github.com/banicr/demo_app"
+LABEL org.opencontainers.image.description="Demo Flask Application"
+
 # Set working directory
 WORKDIR /app
 
