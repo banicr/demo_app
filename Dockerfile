@@ -15,9 +15,20 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
 ARG APP_VERSION=v1.0.0
 ENV APP_VERSION=${APP_VERSION}
 
+# Install system dependencies for psutil and curl for healthchecks
+RUN apt-get update && \
+    apt-get install -y --no-install-recommends \
+        gcc \
+        python3-dev \
+        curl && \
+    rm -rf /var/lib/apt/lists/*
+
 # Install dependencies
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
+
+# Remove build dependencies to reduce image size
+RUN apt-get purge -y --auto-remove gcc python3-dev
 
 # Copy application code
 COPY app/ ./app/
@@ -33,7 +44,7 @@ EXPOSE 5000
 
 # Health check
 HEALTHCHECK --interval=30s --timeout=3s --start-period=5s --retries=3 \
-    CMD python -c "import urllib.request; urllib.request.urlopen('http://localhost:5000/healthz')"
+    CMD curl -f http://localhost:5000/healthz || exit 1
 
 # Run with gunicorn for production
 CMD ["gunicorn", "--bind", "0.0.0.0:5000", "--workers", "2", "--threads", "4", "--timeout", "60", "--access-logfile", "-", "--error-logfile", "-", "app.main:app"]
