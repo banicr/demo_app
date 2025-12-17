@@ -245,41 +245,12 @@ jobs:
       - name: Deploy application with Helm
         run: |
           echo "🚀 Deploying application with Helm chart..."
-          
-          # Deploy without wait first, then monitor
           helm upgrade --install demo-flask-app ./gitops-repo/helm/demo-flask-app \
             --namespace demo-app \
             --set image.tag=${{ needs.build.outputs.image_tag }} \
             --set image.pullPolicy=Never \
             --set replicaCount=1 \
-            --set readinessProbe.initialDelaySeconds=15 \
-            --set livenessProbe.initialDelaySeconds=20 \
-            --set securityContext.readOnlyRootFilesystem=false
-          
-          echo "📊 Waiting for pod to be created..."
-          sleep 10
-          
-          echo "📊 Current pod status:"
-          kubectl get pods -n demo-app -o wide
-          
-          echo "📜 Pod events:"
-          kubectl get events -n demo-app --sort-by='.lastTimestamp'
-          
-          echo "📜 Checking pod logs (if available):"
-          POD_NAME=$(kubectl get pods -n demo-app -l app.kubernetes.io/name=demo-flask-app -o jsonpath='{.items[0].metadata.name}')
-          if [ -n "$POD_NAME" ]; then
-            echo "Pod name: $POD_NAME"
-            kubectl logs -n demo-app $POD_NAME --tail=100 || echo "Logs not yet available"
-            echo "📋 Pod describe:"
-            kubectl describe pod -n demo-app $POD_NAME
-          fi
-          
-          echo "⏳ Waiting for deployment to be ready..."
-          kubectl wait --for=condition=available --timeout=180s deployment/demo-flask-app -n demo-app || {
-            echo "❌ Deployment failed to become ready"
-            kubectl get all -n demo-app
-            exit 1
-          }
+            --wait --timeout 5m
           
           echo "✅ Application deployed with Helm"
 
