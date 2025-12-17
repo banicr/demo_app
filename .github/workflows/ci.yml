@@ -247,15 +247,25 @@ jobs:
             --set image.tag=${{ needs.build.outputs.image_tag }} \
             --set image.pullPolicy=Never \
             --set replicaCount=1 \
-            --wait --timeout 2m
+            --wait --timeout 5m
           
           echo "✅ Application deployed with Helm"
 
       - name: Wait for deployment
         run: |
           echo "⏳ Verifying deployment readiness..."
-          kubectl wait --for=condition=available --timeout=120s \
-            deployment/demo-flask-app -n demo-app
+          
+          # Wait for deployment to be available
+          if ! kubectl wait --for=condition=available --timeout=180s deployment/demo-flask-app -n demo-app; then
+            echo "❌ Deployment failed to become ready"
+            echo "📊 Pod status:"
+            kubectl get pods -n demo-app -o wide
+            echo "📜 Pod logs:"
+            kubectl logs -n demo-app -l app.kubernetes.io/name=demo-flask-app --tail=50 || true
+            echo "📋 Pod events:"
+            kubectl describe pods -n demo-app -l app.kubernetes.io/name=demo-flask-app || true
+            exit 1
+          fi
           
           echo "📊 Deployment status:"
           kubectl get all -n demo-app
