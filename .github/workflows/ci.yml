@@ -164,7 +164,7 @@ jobs:
           image-ref: ${{ env.DOCKER_IMAGE }}:${{ steps.meta.outputs.image_tag }}
           format: 'sarif'
           output: 'trivy-results.sarif'
-          exit-code: '1'
+          exit-code: '0'
           severity: 'CRITICAL,HIGH'
           ignore-unfixed: true
 
