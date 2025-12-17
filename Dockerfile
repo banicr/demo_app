@@ -1,33 +1,42 @@
 # Production-ready Dockerfile for Python Flask application
+# Stage 1: Builder stage for compiling dependencies
+FROM python:3.11-slim AS builder
+
+WORKDIR /app
+
+# Install build dependencies
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    gcc \
+    python3-dev && \
+    rm -rf /var/lib/apt/lists/*
+
+# Install Python dependencies
+COPY requirements.txt .
+RUN pip install --no-cache-dir --user -r requirements.txt
+
+# Stage 2: Runtime stage
 FROM python:3.11-slim
 
 LABEL org.opencontainers.image.source="https://github.com/banicr/demo_app"
 LABEL org.opencontainers.image.description="Demo Flask Application"
 
-# Set working directory
 WORKDIR /app
 
 # Set environment variables
 ENV PYTHONDONTWRITEBYTECODE=1 \
-    PYTHONUNBUFFERED=1
+    PYTHONUNBUFFERED=1 \
+    PATH=/root/.local/bin:$PATH
 
 # APP_VERSION can be overridden at build time
 ARG APP_VERSION=v1.0.0
 ENV APP_VERSION=${APP_VERSION}
 
-# Install curl for healthcheck and build dependencies for psutil
-RUN apt-get update && apt-get install -y --no-install-recommends \
-    curl \
-    gcc \
-    python3-dev && \
-    apt-get clean && rm -rf /var/lib/apt/lists/*
+# Install only curl for healthcheck (no build tools needed)
+RUN apt-get update && apt-get install -y --no-install-recommends curl && \
+    rm -rf /var/lib/apt/lists/*
 
-# Install dependencies
-COPY requirements.txt .
-RUN pip install --no-cache-dir -r requirements.txt
-
-# Remove build dependencies to reduce image size
-RUN apt-get purge -y --auto-remove gcc python3-dev
+# Copy Python dependencies from builder
+COPY --from=builder /root/.local /root/.local
 
 # Copy application code
 COPY app/ ./app/

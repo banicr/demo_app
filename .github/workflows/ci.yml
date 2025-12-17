@@ -146,7 +146,7 @@ jobs:
         with:
           context: .
           push: ${{ github.event_name != 'pull_request' }}
-          platforms: linux/amd64,linux/arm64
+          platforms: linux/amd64
           tags: |
             ${{ env.DOCKER_IMAGE }}:${{ steps.meta.outputs.image_tag }}
             ${{ env.DOCKER_IMAGE }}:latest
@@ -451,72 +451,3 @@ jobs:
             echo "" >> $GITHUB_STEP_SUMMARY
             echo "ArgoCD will automatically sync this change within 3 minutes" >> $GITHUB_STEP_SUMMARY
           fi
-
-  # Stage 6: Verify Deployment (Optional - requires production access)
-  verify-deployment:
-    name: Verify Production Deployment
-    needs: [build, update-gitops]
-    runs-on: ubuntu-latest
-    timeout-minutes: 15
-    if: github.ref == 'refs/heads/main' && vars.ENABLE_DEPLOYMENT_VERIFICATION == 'true'
-    steps:
-      - name: Checkout gitops repository
-        uses: actions/checkout@b4ffde65f46336ab88eb53be808477a3936bae11  # v4.1.1
-        with:
-          repository: ${{ github.repository_owner }}/${{ env.GITOPS_REPO }}
-          token: ${{ secrets.GITOPS_PAT }}
-          path: gitops-repo
-
-      - name: Wait for ArgoCD sync
-        run: |
-          echo "⏳ Waiting for ArgoCD to sync the changes..."
-          echo "This typically takes 1-3 minutes"
-          sleep 180
-
-      - name: Setup kubectl (if production access available)
-        run: |
-          echo "This step requires production cluster access"
-          echo "Configure KUBECONFIG secret to enable deployment verification"
-
-      - name: Verify deployment health
-        id: verify
-        continue-on-error: true
-        run: |
-          echo "🔍 Verifying deployment health..."
-          # This requires production cluster access via KUBECONFIG
-          # Uncomment when production access is configured:
-          # HEALTHY=$(kubectl get pods -n demo-app -l app.kubernetes.io/name=demo-flask-app \
-          #   -o jsonpath='{.items[*].status.phase}' | grep -c Running || echo "0")
-          # if [ "$HEALTHY" -lt 1 ]; then
-          #   echo "deployment_healthy=false" >> $GITHUB_OUTPUT
-          #   exit 1
-          # fi
-          # echo "deployment_healthy=true" >> $GITHUB_OUTPUT
-          echo "✅ Deployment verification skipped (production access not configured)"
-          echo "deployment_healthy=unknown" >> $GITHUB_OUTPUT
-
-      - name: Rollback on failure
-        if: steps.verify.outputs.deployment_healthy == 'false'
-        run: |
-          echo "❌ Deployment health check failed - initiating rollback"
-          cd gitops-repo
-          git config user.name "github-actions[bot]"
-          git config user.email "github-actions[bot]@users.noreply.github.com"
-          
-          # Revert the last commit
-          git revert HEAD --no-edit
-          git push origin main
-          
-          echo "🔄 Rollback complete - previous version restored"
-          echo "### ⚠️ Deployment Rolled Back" >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
-          echo "**Reason:** Deployment health check failed" >> $GITHUB_STEP_SUMMARY
-          echo "**Action:** Reverted to previous version" >> $GITHUB_STEP_SUMMARY
-          exit 1
-
-      - name: Deployment verification summary
-        if: steps.verify.outputs.deployment_healthy == 'true'
-        run: |
-          echo "### ✅ Deployment Verified" >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
-          echo "Production deployment is healthy and serving traffic" >> $GITHUB_STEP_SUMMARY
