@@ -4,6 +4,7 @@ FROM python:3.11-slim
 LABEL org.opencontainers.image.source="https://github.com/banicr/demo_app"
 LABEL org.opencontainers.image.description="Demo Flask Application"
 
+# Set working directory
 WORKDIR /app
 
 # Set environment variables
@@ -14,17 +15,9 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
 ARG APP_VERSION=v1.0.0
 ENV APP_VERSION=${APP_VERSION}
 
-# Install system dependencies
-RUN apt-get update && apt-get install -y --no-install-recommends \
-    curl \
-    gcc \
-    python3-dev && \
-    rm -rf /var/lib/apt/lists/*
-
-# Install Python dependencies
+# Install dependencies
 COPY requirements.txt .
-RUN pip install --no-cache-dir -r requirements.txt && \
-    apt-get purge -y --auto-remove gcc python3-dev
+RUN pip install --no-cache-dir -r requirements.txt
 
 # Copy application code
 COPY app/ ./app/
@@ -40,9 +33,7 @@ EXPOSE 5000
 
 # Health check
 HEALTHCHECK --interval=30s --timeout=3s --start-period=5s --retries=3 \
-    CMD curl -f http://localhost:5000/healthz || exit 1
+    CMD python -c "import urllib.request; urllib.request.urlopen('http://localhost:5000/healthz')"
 
-# Run with gunicorn for production with graceful shutdown
-CMD ["gunicorn", "--bind", "0.0.0.0:5000", "--workers", "2", "--threads", "4", \
-     "--timeout", "60", "--graceful-timeout", "30", \
-     "--access-logfile", "-", "--error-logfile", "-", "app.main:app"]
+# Run with gunicorn for production
+CMD ["gunicorn", "--bind", "0.0.0.0:5000", "--workers", "2", "--threads", "4", "--timeout", "60", "--access-logfile", "-", "--error-logfile", "-", "app.main:app"]
