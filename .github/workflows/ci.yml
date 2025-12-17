@@ -247,6 +247,8 @@ jobs:
             --set image.tag=${{ needs.build.outputs.image_tag }} \
             --set image.pullPolicy=Never \
             --set replicaCount=1 \
+            --set readinessProbe.initialDelaySeconds=15 \
+            --set livenessProbe.initialDelaySeconds=20 \
             --wait --timeout 5m
           
           echo "✅ Application deployed with Helm"
