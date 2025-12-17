@@ -59,7 +59,7 @@ all: clean install lint test build ## Run all checks and build
 # Kubernetes / GitOps Commands
 # ============================================================================
 
-run/deploy: ## Deploy app to local Kind cluster with ArgoCD
+deploy: ## Deploy app to local Kind cluster with ArgoCD
 	@echo "🚀 Setting up local GitOps environment..."
 	@bash scripts/setup-local-cluster.sh $(CLUSTER_NAME)
 

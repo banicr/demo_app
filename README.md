@@ -2,87 +2,64 @@
 
 [![CI/CD Pipeline](https://github.com/banicr/demo_app/actions/workflows/ci.yml/badge.svg)](https://github.com/banicr/demo_app/actions/workflows/ci.yml)
 
-Flask app with automated CI/CD → GitHub Actions builds & tests → ArgoCD deploys to Kubernetes.
-
-## How It Works
-
-1. **Push code** → GitHub Actions runs
-2. **Pipeline** (5 stages): Lint → Test → Build → E2E Test → Update GitOps
-3. **ArgoCD** detects change → Deploys to Kubernetes (~3 min total)
+Simple Flask app with automated CI/CD pipeline.
 
 ## Quick Start
 
 ```bash
-# Clone repos
+# Clone both repos (same directory)
 git clone https://github.com/banicr/demo_app.git
 git clone https://github.com/banicr/demo_gitops.git
 
-# Setup cluster
-cd demo_app/scripts && ./setup-local-cluster.sh
+# Deploy locally
+cd demo_app
+make deploy
 
 # Access app
-kubectl port-forward -n demo-app svc/demo-flask-app 8080:80
+make port-forward
 # Open http://localhost:8080
 ```
 
-**Endpoints:**
-- `/` - Main page
-- `/healthz` - Legacy health check (→ readiness)
-- `/healthz/live` - Liveness probe (process check)
-- `/healthz/ready` - Readiness probe (full health check)
+## Endpoints
+
+- `/` - Main page with app info
+- `/healthz` - Health check
+- `/healthz/live` - Liveness probe
+- `/healthz/ready` - Readiness probe
 
 ## CI/CD Pipeline
 
-Image tag: `{short-sha}-{run-number}` (e.g., `a1b2c3d-42`)
+**What happens on `git push`:**
 
-**Pipeline Stages:**
+1. **Lint** - flake8 + pylint
+2. **Test** - pytest with coverage
+3. **Build** - Docker image → GitHub Container Registry
+4. **E2E Test** - Deploy to temporary Kind cluster with Helm
+5. **Update GitOps** - Update demo_gitops/values.yaml with new image tag
 
-1. **Lint** - flake8 + pylint (fails on errors, --fail-under=8.0)
-2. **Test** - pytest with coverage (70% threshold, uploads to Codecov)
-3. **Build** - Docker image + Trivy vulnerability scan
-4. **E2E Test** - Deploy with Helm chart in kind cluster
-5. **Update GitOps** - Update demo_gitops with yq (only on main)
+**Result:** New image built and GitOps repo updated (~2-3 minutes)
+- Select "Read and write permissions" → Save
 
-**Security:** Actions pinned to SHA, Trivy scanning, concurrency control
-**Speed:** ~5 minutes total
-**PR Support:** Runs on PRs without pushing images
-- Select "Read and write permissions"
-- Save
+### 2. Create GITOPS_PAT Secret
 
-This allows GitHub Actions to push Docker images to GHCR.
+1. Create token: https://github.com/settings/tokens/new (check `repo` scope)
+2. Add secret: https://github.com/banicr/demo_app/settings/secrets/actions
+   - Name: `GITOPS_PAT`
+   - Value: Your token
 
-### 2. Create GITOPS_PAT Secret (ONE-TIME)
+✅ Done! Pipeline runs automatically on every push.
 
-**Get Token:** https://github.com/settings/tokens/new
-- Name: `GitOps Updates`
-- Scope: Check `repo`
-- Generate and copy token
+## Commands
 
-**Add Secret:** https://github.com/banicr/demo_app/settings/secrets/actions
-- Click "New repository secret"
-- Name: `GITOPS_PAT`
-- Value: Paste token
-- Save
-
-✅ Done! Pipeline will work automatically on every push.
-
-## Troubleshooting
-
-**Error: `permission_denied: write_package`**
-- Cause: Missing workflow permissions (see step 1 above)
-- Fix: Enable "Read and write permissions" in Actions settings
-
-**Error: `GITOPS_PAT secret is not set`**
-- Cause: Missing or incorrectly named secret (see step 2 above)
-- Fix: Add secret named exactly `GITOPS_PAT` with `repo` scope
+```bash
+make deploy          # Deploy to local Kind cluster
+make port-forward    # Access app at http://localhost:8080
+make k8s-status      # Check deployment status
+make k8s-logs        # View application logs
+make clean           # Delete cluster
+```
 
 ## Documentation
 
-- **[SETUP_GUIDE.md](SETUP_GUIDE.md)** - Get started in 5 minutes
-- **[ARCHITECTURE.md](ARCHITECTURE.md)** - How it works
-- **[REBUILD_PROMPTS.md](REBUILD_PROMPTS.md)** - Recreate this project from scratch
-- **[demo_gitops](https://github.com/banicr/demo_gitops)** - Deployment manifests
-
----
-
-**Summary:** Push code → GitHub Actions builds/tests → Updates GitOps repo → ArgoCD deploys. All automatic, all validated.
+- [SETUP_GUIDE.md](SETUP_GUIDE.md) - Detailed setup instructions
+- [demo_gitops](https://github.com/banicr/demo_gitops) - Helm charts

@@ -1,124 +1,67 @@
 # Setup Guide
 
-Get this Flask app running locally with Kubernetes + ArgoCD in 5 minutes.
+## Prerequisites
 
-## What You Need
-
-- **Docker Desktop** - Running
-- **kind** - Local Kubernetes
-- **kubectl** - Kubernetes CLI
+- Docker Desktop (running)
+- kind, kubectl, helm
 
 **Install (macOS):**
 ```bash
-brew install kind kubectl
+brew install kind kubectl helm
 ```
 
-**Install (Linux):**
+## Setup**1. Clone repos (same directory):**
 ```bash
-# kind
-curl -Lo ./kind https://kind.sigs.k8s.io/dl/v0.20.0/kind-linux-amd64
-chmod +x ./kind && sudo mv ./kind /usr/local/bin/
-
-# kubectl
-curl -LO "https://dl.k8s.io/release/$(curl -Ls https://dl.k8s.io/release/stable.txt)/bin/linux/amd64/kubectl"
-chmod +x kubectl && sudo mv kubectl /usr/local/bin/
-```
-
-## Getting Started
-
-### 1. Clone Repositories
-```bash
-mkdir -p ~/projects/gitops-demo && cd ~/projects/gitops-demo
-git clone https://github.com/banicr/demo_app.git
-git clone https://github.com/banicr/demo_gitops.git
-```Quick Start
-
-**1. Clone repos:**
-```bash
-mkdir -p ~/gitops && cd ~/gitops
 git clone https://github.com/banicr/demo_app.git
 git clone https://github.com/banicr/demo_gitops.git
 ```
 
-**2. Run setup:**
-```bash
-cd demo_app/scripts
-./setup-local-cluster.sh
-```
-
-This creates a Kubernetes cluster, installs ArgoCD, and deploys the app (~3 minutes).
-
-**3. Access the app:**
-```bash
-kubectl port-forward -n demo-app svc/demo-flask-app 8080:80
-```
-Open: http://localhost:8080
-
-**4. Access ArgoCD (optional):**
-```bash
-kubectl port-forward -n argocd svc/argocd-server 8081:443
-```
-Open: https://localhost:8081
-- Username: `admin`
-- Password: Run `cat argocd-credentials.txt` in the scripts folder
-
-## How It Works
-
-**Make a code change:**
+**2. Deploy:**
 ```bash
 cd demo_app
+make deploy
+```
+
+**3. Access app:**
+```bash
+make port-forward
+```
+Open http://localhost:8080
+
+## Development
+
+**Make changes:**
+```bash
 # Edit app/main.py
-git add . && git commit -m "Update app" && git push
+git add . && git commit -m "Update" && git push
 ```
 
-**What happens automatically:**
-1. **Lint** (flake8, pylint) + **Test** (pytest with 70% coverage)
-2. **Build** (Docker image with Trivy scan for vulnerabilities)
-3. **E2E Test** (Deploy to temporary kind cluster with Helm)
-4. **Update GitOps** (Update demo_gitops values.yaml with yq)
-5. ArgoCD detects change and deploys (~1-3 min)
-6. Refresh http://localhost:8080 to see changes
+**Pipeline runs automatically:**
+1. Lint + Test
+2. Build Docker image
+3. E2E test in Kind cluster
+4. Update GitOps repo
 
-**Monitor progress:**
-- Pipeline: https://github.com/banicr/demo_app/actions
-- ArgoCD: https://localhost:8081
-- Pods: `kubectl get pods -n demo-app`
-
-## Troubleshooting
-
-**Pods not running?**
+**Check status:**
 ```bash
-kubectl get pods -n demo-app
-kubectl logs -n demo-app -l app.kubernetes.io/name=demo-flask-app
-```
-
-**Can't access app?**
-```bash
-kubectl port-forward -n demo-app svc/demo-flask-app 8080:80
-```
-
-**ArgoCD not syncing?**
-```bash
-kubectl get application -n argocd demo-flask-app
-```
-
-**Start over:**
-```bash
-kind delete cluster --name gitops-demo
-cd demo_app/scripts && ./setup-local-cluster.sh
+make k8s-status    # Pod status
+make k8s-logs      # App logs
 ```
 
 ## Cleanup
 
 ```bash
-kind delete cluster --name gitops-demo
+make clean
 ```
 
-That's it! Everything deleted.
+## Useful Commands
 
-## Quick Reference
-
-- **App:** http://localhost:8080  
-- **ArgoCD:** https://localhost:8081 (credentials in `argocd-credentials.txt`)
-- **Pipeline:** https://github.com/banicr/demo_app/actions
-- **Cluster:** `gitops-demo`
+```bash
+make deploy          # Deploy to local cluster
+make port-forward    # Access at http://localhost:8080
+make argocd-ui       # Access ArgoCD UI
+make argocd-password # Get ArgoCD password
+make k8s-status      # Check status
+make k8s-logs        # View logs
+make clean           # Delete cluster
+```

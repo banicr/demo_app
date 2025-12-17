@@ -25,7 +25,7 @@ NC='\033[0m' # No Color
 CLUSTER_NAME="${1:-gitops-demo}"
 ARGOCD_VERSION="stable"
 GITOPS_REPO="https://github.com/banicr/demo_gitops.git"
-APP_MANIFEST_PATH="../../demo_gitops/argocd-application.yaml"
+APP_MANIFEST_PATH="../demo_gitops/argocd-application.yaml"
 
 ################################################################################
 # Helper Functions
@@ -225,120 +225,48 @@ EOF
     print_success "Credentials saved to: argocd-credentials.txt"
 }
 
+
+
 deploy_application() {
-    print_header "Deploying Application via ArgoCD"
+    print_header "Deploying Application with Helm"
     
-    # Check if running from demo_app/scripts
-    local manifest_path="$APP_MANIFEST_PATH"
-    if [[ ! -f "$manifest_path" ]]; then
-        print_warning "ArgoCD Application manifest not found at: $manifest_path"
-        print_info "Expected location: demo_gitops/argocd-application.yaml"
-        print_info "Current directory: $(pwd)"
-        print_info ""
-        print_info "Please ensure both repositories are cloned in the same parent directory:"
-        print_info "  parent/"
-        print_info "    ├── demo_app/"
-        print_info "    └── demo_gitops/"
-        print_info ""
-        print_info "You can manually apply it later with:"
-        echo "  kubectl apply -f /path/to/demo_gitops/argocd-application.yaml"
-        return 1
-    fi
+    local helm_chart_path="../demo_gitops/helm/demo-flask-app"
     
-    print_info "Applying ArgoCD Application manifest..."
-    kubectl apply -f "$manifest_path"
+    # Build and load image
+    IMAGE_TAG="local-dev"
+    print_info "Building image: demo-flask-app:${IMAGE_TAG}"
+    docker build --build-arg APP_VERSION=${IMAGE_TAG} -t demo-flask-app:${IMAGE_TAG} .
     
-    print_success "ArgoCD Application created"
+    print_info "Loading image into cluster..."
+    kind load docker-image demo-flask-app:${IMAGE_TAG} --name ${CLUSTER_NAME}
     
-    # Wait for application to sync
-    print_info "Waiting for ArgoCD to sync the application..."
-    sleep 10
+    # Create namespace
+    kubectl create namespace demo-app --dry-run=client -o yaml | kubectl apply -f - 2>/dev/null
     
-    # Show application status
-    kubectl get application -n argocd demo-flask-app
+    # Deploy with Helm
+    print_info "Deploying with Helm..."
+    helm upgrade --install demo-flask-app "$helm_chart_path" \
+        --namespace demo-app \
+        --set image.repository=demo-flask-app \
+        --set image.tag=${IMAGE_TAG} \
+        --set image.pullPolicy=Never \
+        --set securityContext.readOnlyRootFilesystem=false
     
-    print_success "Application deployed"
+    print_success "Deployed! Checking status..."
+    sleep 3
+    kubectl get pods -n demo-app
 }
 
-verify_deployment() {
-    print_header "Verifying Deployment"
-    
-    # Wait for application pods
-    print_info "Waiting for application pods to be ready..."
-    if wait_for_pods "demo-app" "app.kubernetes.io/name=demo-flask-app" 180; then
-        # Test health endpoint
-        print_info "Testing application health endpoint..."
-        if kubectl run test-curl --rm -i --restart=Never --image=curlimages/curl --timeout=30s -- \
-            curl -s http://demo-flask-app.demo-app.svc.cluster.local/healthz | grep -q "ok"; then
-            print_success "Application is healthy!"
-        else
-            print_warning "Health check returned unexpected response"
-        fi
-    else
-        print_warning "Application pods are not ready yet"
-        print_info "Check status with: kubectl get pods -n demo-app"
-    fi
-}
+
 
 print_next_steps() {
     print_header "Setup Complete! 🎉"
     
-    cat <<EOF
-${GREEN}Your local GitOps environment is ready!${NC}
-
-${BLUE}Quick Commands:${NC}
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-
-${YELLOW}1. Access ArgoCD UI:${NC}
-   kubectl port-forward svc/argocd-server -n argocd 8080:443 &
-   open https://localhost:8080
-   
-   Credentials: See argocd-credentials.txt
-
-${YELLOW}2. Monitor Application:${NC}
-   kubectl get application -n argocd demo-flask-app -w
-   kubectl get pods -n demo-app -w
-
-${YELLOW}3. Test Application:${NC}
-   kubectl run test-curl --rm -i --restart=Never --image=curlimages/curl -- \\
-     curl -s http://demo-flask-app.demo-app.svc.cluster.local/healthz
-
-${YELLOW}4. View Application Logs:${NC}
-   kubectl logs -n demo-app -l app.kubernetes.io/name=demo-flask-app --tail=50 -f
-
-${YELLOW}5. Trigger New Deployment:${NC}
-   # Make changes to demo_app and push to trigger CI/CD
-   # Pipeline will build image and update gitops-repo
-   # ArgoCD will automatically sync the changes
-
-${BLUE}Useful Information:${NC}
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-
-• Cluster Name:        ${CLUSTER_NAME}
-• Kubectl Context:     kind-${CLUSTER_NAME}
-• ArgoCD Namespace:    argocd
-• App Namespace:       demo-app
-• GitOps Repository:   ${GITOPS_REPO}
-
-${BLUE}Cleanup:${NC}
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-
-To delete the cluster:
-   kind delete cluster --name ${CLUSTER_NAME}
-
-To stop port-forward:
-   pkill -f "port-forward.*argocd"
-
-${BLUE}Documentation:${NC}
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-
-• Setup Guide:         SETUP_GUIDE.md
-• Architecture:        DEVOPS_ARCHITECTURE_GUIDE.md
-• Quick Start:         QUICK_START.md
-
-${GREEN}Happy deploying! 🚀${NC}
-
-EOF
+    echo -e "${GREEN}✅ Cluster: ${CLUSTER_NAME}${NC}"
+    echo -e "${GREEN}✅ App deployed in namespace: demo-app${NC}"
+    echo ""
+    echo -e "${BLUE}Access app:${NC} make port-forward"
+    echo -e "${BLUE}Cleanup:${NC} make clean"
 }
 
 ################################################################################
@@ -380,7 +308,6 @@ EOF
     fi
     
     deploy_application
-    verify_deployment
     print_next_steps
 }
 
