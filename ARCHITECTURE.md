@@ -1,6 +1,8 @@
-# Architecture & Flow
+# Architecture
 
-## System Architecture
+Simple overview of how code gets from your laptop to Kubernetes.
+
+## Flow
 
 ```
 ┌─────────────────────────────────────────────────────────────────┐

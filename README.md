@@ -2,43 +2,32 @@
 
 [![CI/CD Pipeline](https://github.com/banicr/demo_app/actions/workflows/ci.yml/badge.svg)](https://github.com/banicr/demo_app/actions/workflows/ci.yml)
 
-A Flask web application with automated CI/CD using GitHub Actions, Kubernetes, and ArgoCD.
+Flask app with automated CI/CD → GitHub Actions builds & tests → ArgoCD deploys to Kubernetes.
 
-## What It Does
+## How It Works
 
-1. **Push code** → GitHub Actions runs automatically
-2. **Pipeline** (5 stages):
-   - **Lint**: Code quality (flake8, pylint)
-   - **Test**: Unit tests (pytest)
-   - **Build**: Docker image → GitHub Container Registry
-   - **E2E Test**: Test in kind cluster
-   - **GitOps Update**: Update deployment config
-3. **ArgoCD** detects change → deploys to Kubernetes
-
-## Endpoints
-
-- `/` - Main page with app version
-- `/healthz` - Health check (returns `{"status": "ok"}`)
+1. **Push code** → GitHub Actions runs
+2. **Pipeline** (5 stages): Lint → Test → Build → E2E Test → Update GitOps
+3. **ArgoCD** detects change → Deploys to Kubernetes (~3 min total)
 
 ## Quick Start
 
-### Run Locally
-
 ```bash
-python3 -m venv venv
-source venv/bin/activate
-pip install -r requirements.txt
-python -m app.main
-# Visit http://localhost:5000
+# Clone repos
+git clone https://github.com/banicr/demo_app.git
+git clone https://github.com/banicr/demo_gitops.git
+
+# Setup cluster
+cd demo_app/scripts && ./setup-local-cluster.sh
+
+# Access app
+kubectl port-forward -n demo-app svc/demo-flask-app 8080:80
+# Open http://localhost:8080
 ```
 
-### Run with Docker
-
-```bash
-docker build -t demo-flask-app:local .
-docker run -p 5000:5000 demo-flask-app:local
-# Visit http://localhost:5000
-```
+**Endpoints:**
+- `/` - Main page
+- `/healthz` - Health check
 
 ## CI/CD Pipeline
 
@@ -46,15 +35,15 @@ Image tag: `{short-sha}-{run-number}` (e.g., `a1b2c3d-42`)
 
 **Stage 1: Lint** - flake8 + pylint  
 **Stage 2: Test** - pytest unit tests  
-**Stage 3: Build** - Docker image → `ghcr.io/banicr/demo-flask-app:{tag}`  
-**Stage 4: E2E Test** - Deploy to kind cluster, test endpoints  
-**Stage 5: Update GitOps** - Validate & push new tag to `demo_gitops` (main branch only)
+**SPipeline Stages
 
-## One-Time Setup
+1. **Lint** - Code quality checks
+2. **Test** - Run unit tests
+3. **Build** - Create Docker image `ghcr.io/banicr/demo-flask-app:{sha}-{run}`
+4. **E2E Test** - Deploy & test in temporary cluster
+5. **Update GitOps** - Validate Helm & push to `demo_gitops`
 
-### 1. Enable Workflow Permissions (ONE-TIME)
-
-**Repository Settings → Actions → General → Workflow permissions:**
+Fast: ~3 minutes. Safe: Validates before deploy.
 - Select "Read and write permissions"
 - Save
 
@@ -85,15 +74,13 @@ This allows GitHub Actions to push Docker images to GHCR.
 - Cause: Missing or incorrectly named secret (see step 2 above)
 - Fix: Add secret named exactly `GITOPS_PAT` with `repo` scope
 
-## Related Repositories
+## Documentation
 
-- **[demo-gitops-repo
-
-- **[SETUP_GUIDE.md](SETUP_GUIDE.md)** - Complete setup instructions
-- **[ARCHITECTURE.md](ARCHITECTURE.md)** - System diagrams and flow
+- **[SETUP_GUIDE.md](SETUP_GUIDE.md)** - Get started in 5 minutes
+- **[ARCHITECTURE.md](ARCHITECTURE.md)** - How it works
 - **[REBUILD_PROMPTS.md](REBUILD_PROMPTS.md)** - Recreate this project from scratch
-- **[IMPROVEMENTS.md](IMPROVEMENTS.md)** - Multi-service architecture and DevOps improvements
+- **[demo_gitops](https://github.com/banicr/demo_gitops)** - Deployment manifests
 
-## Related Repositories
+---
 
-- **[demo_gitops](https://github.com/banicr/demo_gitops)** - Kubernetes deployment manifests
+**Summary:** Push code → GitHub Actions builds/tests → Updates GitOps repo → ArgoCD deploys. All automatic, all validated.
