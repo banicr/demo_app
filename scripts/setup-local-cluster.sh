@@ -231,6 +231,7 @@ deploy_application() {
     print_header "Deploying Application with Helm"
     
     local helm_chart_path="../demo_gitops/helm/demo-flask-app"
+    local argocd_manifest="../demo_gitops/argocd-application.yaml"
     
     # Build and load image
     IMAGE_TAG="local-dev"
@@ -255,6 +256,13 @@ deploy_application() {
     print_success "Deployed! Checking status..."
     sleep 3
     kubectl get pods -n demo-app
+    
+    # Register app with ArgoCD (optional, for GitOps workflow)
+    if [[ -f "$argocd_manifest" ]]; then
+        print_info "Registering app with ArgoCD..."
+        kubectl apply -f "$argocd_manifest"
+        print_success "ArgoCD Application created"
+    fi
 }
 
 
