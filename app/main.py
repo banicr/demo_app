@@ -16,9 +16,9 @@ APP_NAME = os.environ.get('APP_NAME', 'Demo Flask App')
 def healthz():
     """
     Legacy health check endpoint for backward compatibility.
-    Redirects to readiness check.
+    Simple alive check.
     """
-    return readiness()
+    return jsonify({'status': 'ok'}), 200
 
 
 @app.route('/healthz/live')
@@ -35,49 +35,25 @@ def liveness():
 def readiness():
     """
     Readiness probe endpoint - checks if the app can serve traffic.
-    Performs comprehensive health checks including memory usage.
+    Lightweight check suitable for containerized environments.
     Kubernetes will remove pod from service if this fails.
     """
     checks = {}
     status_code = 200
 
-    # Check memory usage
-    try:
-        memory = psutil.virtual_memory()
-        memory_percent = memory.percent
-
-        if memory_percent > 90:
-            checks['memory'] = f'critical: {memory_percent:.1f}%'
-            status_code = 503
-        elif memory_percent > 80:
-            checks['memory'] = f'warning: {memory_percent:.1f}%'
-        else:
-            checks['memory'] = f'ok: {memory_percent:.1f}%'
-    except Exception as e:
-        checks['memory'] = f'error: {str(e)}'
-        status_code = 503
-
-    # Check disk usage
-    try:
-        disk = psutil.disk_usage('/')
-        disk_percent = disk.percent
-
-        if disk_percent > 90:
-            checks['disk'] = f'critical: {disk_percent:.1f}%'
-            status_code = 503
-        elif disk_percent > 80:
-            checks['disk'] = f'warning: {disk_percent:.1f}%'
-        else:
-            checks['disk'] = f'ok: {disk_percent:.1f}%'
-    except Exception as e:
-        checks['disk'] = f'error: {str(e)}'
-        # Don't fail on disk check errors in containers
-
     # Check if Flask app is responding
     checks['flask'] = 'ok'
 
-    overall_status = 'ready' if status_code == 200 else 'not ready'
-    
+    # Optional: Check memory usage (informational only, won't fail probe)
+    try:
+        memory = psutil.virtual_memory()
+        memory_percent = memory.percent
+        checks['memory'] = f'{memory_percent:.1f}%'
+    except Exception:
+        checks['memory'] = 'unavailable'
+
+    overall_status = 'ready'
+
     return jsonify({
         'status': overall_status,
         'checks': checks

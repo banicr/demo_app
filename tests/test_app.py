@@ -25,6 +25,18 @@ def test_healthz_endpoint(client):
     assert data == {'status': 'ok'}
 
 
+def test_readiness_endpoint(client):
+    """Test that /healthz/ready returns detailed checks."""
+    response = client.get('/healthz/ready')
+
+    assert response.status_code == 200
+    assert response.content_type == 'application/json'
+
+    data = json.loads(response.data)
+    assert 'status' in data
+    assert 'checks' in data
+
+
 def test_healthz_endpoint_json_structure(client):
     """Test that /healthz returns properly structured JSON."""
     response = client.get('/healthz')
