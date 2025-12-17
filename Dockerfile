@@ -15,13 +15,19 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
 ARG APP_VERSION=v1.0.0
 ENV APP_VERSION=${APP_VERSION}
 
-# Install curl for healthcheck
-RUN apt-get update && apt-get install -y --no-install-recommends curl && \
+# Install curl for healthcheck and build dependencies for psutil
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    curl \
+    gcc \
+    python3-dev && \
     apt-get clean && rm -rf /var/lib/apt/lists/*
 
 # Install dependencies
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
+
+# Remove build dependencies to reduce image size
+RUN apt-get purge -y --auto-remove gcc python3-dev
 
 # Copy application code
 COPY app/ ./app/
