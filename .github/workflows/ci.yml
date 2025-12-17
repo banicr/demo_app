@@ -296,7 +296,7 @@ jobs:
           echo "Testing legacy health endpoint..."
           HEALTH=$(kubectl exec -n demo-app test-curl -- curl -s http://demo-flask-app/healthz)
           echo "Health response: $HEALTH"
-          if ! echo "$HEALTH" | grep -q '"status".*:.*"ready"'; then
+          if ! echo "$HEALTH" | grep -q '"status".*:.*"ok"'; then
             echo "❌ Legacy health check failed!"
             kubectl delete pod test-curl -n demo-app --ignore-not-found
             exit 1
