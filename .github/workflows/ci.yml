@@ -391,9 +391,12 @@ jobs:
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
           
-          # Create unique branch name
+          # Create unique branch name with timestamp to avoid conflicts
           BRANCH_NAME="update-image-${{ needs.build.outputs.image_tag }}"
           echo "branch_name=${BRANCH_NAME}" >> $GITHUB_OUTPUT
+          
+          # Delete remote branch if it exists
+          git push origin --delete "${BRANCH_NAME}" 2>/dev/null || true
           
           git checkout -b "${BRANCH_NAME}"
           git add helm/demo-flask-app/values.yaml
@@ -417,6 +420,7 @@ jobs:
 
       - name: Create Pull Request
         if: steps.create_branch.outputs.no_changes == 'false'
+        id: create_pr
         env:
           GH_TOKEN: ${{ secrets.GITOPS_PAT }}
         run: |
@@ -437,23 +441,75 @@ jobs:
 
           ### Validation
           - ✅ E2E tests passed in app repository
-          - ⏳ Helm validation will run automatically
+          - ⏳ Helm validation running...
           
-          This PR will be **auto-merged** once validation passes." \
+          This PR will be automatically merged once validation passes." \
             --base main \
             --head "${{ steps.create_branch.outputs.branch_name }}")
           
+          PR_NUMBER=$(echo "${PR_URL}" | grep -o '[0-9]*$')
           echo "pr_url=${PR_URL}" >> $GITHUB_OUTPUT
+          echo "pr_number=${PR_NUMBER}" >> $GITHUB_OUTPUT
           echo "✅ Created PR: ${PR_URL}"
+
+      - name: Wait for validation and merge
+        if: steps.create_branch.outputs.no_changes == 'false'
+        env:
+          GH_TOKEN: ${{ secrets.GITOPS_PAT }}
+        run: |
+          cd gitops-repo
           
-          # Enable auto-merge (will merge when validation passes)
-          gh pr merge "${PR_URL}" --auto --squash
-          echo "✅ Enabled auto-merge for PR"
+          echo "⏳ Waiting for validation checks to complete..."
           
-          echo "### 🚀 GitOps Update PR Created" >> $GITHUB_STEP_SUMMARY
+          # Wait for checks to complete (max 5 minutes)
+          TIMEOUT=300
+          ELAPSED=0
+          INTERVAL=10
+          
+          while [ $ELAPSED -lt $TIMEOUT ]; do
+            # Get check status
+            STATUS=$(gh pr view ${{ steps.create_pr.outputs.pr_number }} --json statusCheckRollup --jq '.statusCheckRollup[0].conclusion' 2>/dev/null || echo "PENDING")
+            
+            # Check if all checks completed
+            ALL_DONE=$(gh pr view ${{ steps.create_pr.outputs.pr_number }} --json statusCheckRollup --jq '[.statusCheckRollup[] | select(.conclusion == null)] | length' 2>/dev/null || echo "1")
+            
+            if [ "$ALL_DONE" = "0" ]; then
+              echo "✅ All validation checks completed"
+              
+              # Check if all passed
+              FAILED=$(gh pr view ${{ steps.create_pr.outputs.pr_number }} --json statusCheckRollup --jq '[.statusCheckRollup[] | select(.conclusion == "FAILURE")] | length' 2>/dev/null || echo "0")
+              
+              if [ "$FAILED" = "0" ]; then
+                echo "✅ All checks passed! Merging PR..."
+                gh pr merge ${{ steps.create_pr.outputs.pr_number }} --squash --auto
+                echo "✅ PR merged successfully"
+                
+                echo "### 🚀 GitOps Update Complete" >> $GITHUB_STEP_SUMMARY
+                echo "" >> $GITHUB_STEP_SUMMARY
+                echo "**Image Tag:** \`${{ needs.build.outputs.image_tag }}\`" >> $GITHUB_STEP_SUMMARY
+                echo "**Pull Request:** ${{ steps.create_pr.outputs.pr_url }}" >> $GITHUB_STEP_SUMMARY
+                echo "**Status:** ✅ Merged (validation passed)" >> $GITHUB_STEP_SUMMARY
+                echo "" >> $GITHUB_STEP_SUMMARY
+                echo "ArgoCD will automatically sync this change within 3 minutes" >> $GITHUB_STEP_SUMMARY
+                exit 0
+              else
+                echo "❌ Validation checks failed"
+                echo "### ⚠️  GitOps Update Failed" >> $GITHUB_STEP_SUMMARY
+                echo "" >> $GITHUB_STEP_SUMMARY
+                echo "**Pull Request:** ${{ steps.create_pr.outputs.pr_url }}" >> $GITHUB_STEP_SUMMARY
+                echo "**Status:** ❌ Validation failed - manual review required" >> $GITHUB_STEP_SUMMARY
+                exit 1
+              fi
+            fi
+            
+            echo "⏳ Checks still running... (${ELAPSED}s elapsed)"
+            sleep $INTERVAL
+            ELAPSED=$((ELAPSED + INTERVAL))
+          done
+          
+          echo "⚠️  Timeout waiting for validation checks"
+          echo "### ⏳ GitOps Update Pending" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
-          echo "**Image Tag:** \`${{ needs.build.outputs.image_tag }}\`" >> $GITHUB_STEP_SUMMARY
-          echo "**Pull Request:** ${PR_URL}" >> $GITHUB_STEP_SUMMARY
-          echo "**Status:** Auto-merge enabled (will merge after validation)" >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
-          echo "Once validation passes and PR merges, ArgoCD will automatically sync" >> $GITHUB_STEP_SUMMARY
+          echo "**Pull Request:** ${{ steps.create_pr.outputs.pr_url }}" >> $GITHUB_STEP_SUMMARY
+          echo "**Status:** ⏳ Validation timeout - check PR manually" >> $GITHUB_STEP_SUMMARY
+          exit 1
