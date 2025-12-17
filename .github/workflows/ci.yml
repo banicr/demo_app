@@ -15,7 +15,7 @@ on:
 
 env:
   DOCKER_IMAGE: ghcr.io/${{ github.repository_owner }}/demo-flask-app
-  GITOPS_REPO: demo-gitops-repo
+  GITOPS_REPO: demo_gitops
 
 permissions:
   contents: read

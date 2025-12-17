@@ -24,7 +24,7 @@ NC='\033[0m' # No Color
 # Configuration
 CLUSTER_NAME="${1:-gitops-demo}"
 ARGOCD_VERSION="stable"
-GITOPS_REPO="https://github.com/banicr/demo-gitops-repo.git"
+GITOPS_REPO="https://github.com/banicr/demo_gitops.git"
 APP_MANIFEST_PATH="../gitops-repo/argocd-application.yaml"
 
 ################################################################################
@@ -228,14 +228,14 @@ EOF
 deploy_application() {
     print_header "Deploying Application via ArgoCD"
     
-    # Check if running from app-repo/scripts
+    # Check if running from demo_app/scripts
     local manifest_path="$APP_MANIFEST_PATH"
     if [[ ! -f "$manifest_path" ]]; then
         # Try alternative paths
         if [[ -f "../../gitops-repo/argocd-application.yaml" ]]; then
             manifest_path="../../gitops-repo/argocd-application.yaml"
-        elif [[ -f "../demo-gitops-repo/argocd-application.yaml" ]]; then
-            manifest_path="../demo-gitops-repo/argocd-application.yaml"
+        elif [[ -f "../demo_gitops/argocd-application.yaml" ]]; then
+            manifest_path="../demo_gitops/argocd-application.yaml"
         else
             print_warning "ArgoCD Application manifest not found at expected location"
             print_info "Please ensure gitops-repo is cloned at: $(dirname "$APP_MANIFEST_PATH")"
@@ -307,7 +307,7 @@ ${YELLOW}4. View Application Logs:${NC}
    kubectl logs -n demo-app -l app.kubernetes.io/name=demo-flask-app --tail=50 -f
 
 ${YELLOW}5. Trigger New Deployment:${NC}
-   # Make changes to app-repo and push to trigger CI/CD
+   # Make changes to demo_app and push to trigger CI/CD
    # Pipeline will build image and update gitops-repo
    # ArgoCD will automatically sync the changes
 

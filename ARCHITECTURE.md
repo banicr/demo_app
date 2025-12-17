@@ -112,8 +112,11 @@
 │  • Update helm/demo-flask-app/values.yaml:                     │
 │    - image.tag: new version                                     │
 │    - env.appVersion: new version                                │
-│  • Commit and push changes                                      │
-│  • ArgoCD will detect and deploy                                │
+│  • Run Helm lint --strict (pre-validation)                      │
+│  • Render and validate Helm templates                           │
+│  • If validation passes → Push directly to main                 │
+│  • If validation fails → Pipeline fails (no push)               │
+│  • ArgoCD detects change and deploys (~10-20 sec)               │
 └─────────────────────────────────────────────────────────────────┘
 ```
 

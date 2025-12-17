@@ -42,7 +42,7 @@
 
 ```
 ┌─────────────────────────────────────────────────────────────────────┐
-│                           APP-REPO                                  │
+│                           DEMO_APP                                  │
 │                      (Application Code)                             │
 ├─────────────────────────────────────────────────────────────────────┤
 │  services/                                                          │
@@ -111,7 +111,7 @@
 
 #### 1. Change Detection
 - Path-based triggers detect which services changed
-- Webhook from app-repo to ci-repo
+- Webhook from demo_app to ci-repo
 - Only build affected services
 
 #### 2. Parallel Builds
@@ -149,7 +149,7 @@
 
 ### Benefits of This Structure
 
-✅ **Single source**: All code in app-repo  
+✅ **Single source**: All code in demo_app  
 ✅ **Consistent CI/CD**: Shared pipelines in ci-repo  
 ✅ **GitOps**: Deployment state in cd-repo  
 ✅ **Easy rollback**: Git revert in cd-repo  

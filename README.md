@@ -48,7 +48,7 @@ Image tag: `{short-sha}-{run-number}` (e.g., `a1b2c3d-42`)
 **Stage 2: Test** - pytest unit tests  
 **Stage 3: Build** - Docker image → `ghcr.io/banicr/demo-flask-app:{tag}`  
 **Stage 4: E2E Test** - Deploy to kind cluster, test endpoints  
-**Stage 5: Update GitOps** - Update `demo-gitops-repo` with new tag (main branch only)
+**Stage 5: Update GitOps** - Validate & push new tag to `demo_gitops` (main branch only)
 
 ## One-Time Setup
 
@@ -56,8 +56,9 @@ Image tag: `{short-sha}-{run-number}` (e.g., `a1b2c3d-42`)
 
 **Repository Settings → Actions → General → Workflow permissions:**
 - Select "Read and write permissions"
-- Check "Allow GitHub Actions to create and approve pull requests"
 - Save
+
+This allows GitHub Actions to push Docker images to GHCR.
 
 ### 2. Create GITOPS_PAT Secret (ONE-TIME)
 
@@ -95,4 +96,4 @@ Image tag: `{short-sha}-{run-number}` (e.g., `a1b2c3d-42`)
 
 ## Related Repositories
 
-- **[demo_gitops](https://github.com/banicr/demo-gitops-repo)** - Kubernetes deployment manifests
+- **[demo_gitops](https://github.com/banicr/demo_gitops)** - Kubernetes deployment manifests
